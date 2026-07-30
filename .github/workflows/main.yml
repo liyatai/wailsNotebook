@@ -1,0 +1,66 @@
+name: Build macOS x86
+
+on:
+  push:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    # 注意：这里必须是 macos-13，因为要在 macOS 环境编译
+    runs-on: macos-13
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        # 保持 1.21 稳定版本，如果你需要 1.25 可以改为 '1.25'
+        go-version: '1.25'
+        cache: true
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        # 保持 18 LTS 版本，Wails 对 18 支持最好
+        # 你的本地是 24，但 CI 用 18 更稳定
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: 'frontend/package-lock.json'
+    
+    - name: Install Wails CLI
+      run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+    
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Build application for macOS x86
+      run: wails build --platform darwin/amd64 -clean
+    
+    - name: Package into zip
+      run: |
+        cd build/bin
+        zip -r ../../my-app-macos-x86.zip *.app
+        cd ../..
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: my-app-macos-x86
+        path: my-app-macos-x86.zip
+    
+    - name: Upload to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: my-app-macos-x86.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
